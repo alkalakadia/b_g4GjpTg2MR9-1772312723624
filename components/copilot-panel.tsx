@@ -24,7 +24,6 @@ function BrandMark() {
 }
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { useApp } from "@/lib/app-context"
 import { streamChat, sendChatMessage, type ChatMessage } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -194,35 +193,33 @@ export function CopilotPanel() {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1">
-        <div ref={scrollRef} className="flex flex-col gap-3 p-4">
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={cn(
-                "max-w-[90%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed",
-                msg.role === "assistant"
-                  ? "self-start bg-muted text-card-foreground"
-                  : "self-end bg-primary text-primary-foreground"
-              )}
-            >
-              {msg.role === "assistant" && msg.content
-                ? <MsgMarkdown text={msg.content} />
-                : msg.content || (isTyping && i === messages.length - 1 ? null : "…")}
+      <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto p-4 min-h-0">
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={cn(
+              "max-w-[90%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed",
+              msg.role === "assistant"
+                ? "self-start bg-muted text-card-foreground"
+                : "self-end bg-primary text-primary-foreground"
+            )}
+          >
+            {msg.role === "assistant" && msg.content
+              ? <MsgMarkdown text={msg.content} />
+              : msg.content || (isTyping && i === messages.length - 1 ? null : "…")}
+          </div>
+        ))}
+        {/* Typing indicator shown while waiting for first delta */}
+        {isTyping && messages[messages.length - 1]?.content === "" && (
+          <div className="self-start rounded-xl bg-muted px-3.5 py-2.5">
+            <div className="flex items-center gap-1">
+              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
+              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
+              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
             </div>
-          ))}
-          {/* Typing indicator shown while waiting for first delta */}
-          {isTyping && messages[messages.length - 1]?.content === "" && (
-            <div className="self-start rounded-xl bg-muted px-3.5 py-2.5">
-              <div className="flex items-center gap-1">
-                <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-                <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-                <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
-              </div>
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+          </div>
+        )}
+      </div>
 
       {/* Suggested Prompts */}
       <div className="border-t border-border px-4 py-3">
