@@ -285,7 +285,14 @@ export function UploadPage() {
                 )}
               </div>
               {!selectedFile && (
-                <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    fileInputRef.current?.click()
+                  }}
+                >
                   Browse files
                 </Button>
               )}
