@@ -90,63 +90,182 @@ function SimpleMarkdown({ text, className }: { text: string; className?: string 
     <div className={className}>
       {paragraphs.map((para, pi) => {
         const lines = para.split("\n").filter(Boolean)
-        if (lines.length > 1 && lines.every((l) => /^[-•*]\s/.test(l.trim()))) {
+        // H1 — section heading
+        if (para.startsWith("# "))
           return (
-            <ul key={pi} className="list-disc pl-5 space-y-1 mb-3">
+            <h2 key={pi} className="text-sm font-bold uppercase tracking-wide text-primary border-b border-primary/20 pb-1 mt-6 mb-2">
+              {para.slice(2)}
+            </h2>
+          )
+        // H2 — sub-heading
+        if (para.startsWith("## "))
+          return <h3 key={pi} className="text-sm font-semibold text-foreground mt-4 mb-1">{para.slice(3)}</h3>
+        // Bullet list
+        if (lines.length >= 1 && lines.every((l) => /^[-•*]\s/.test(l.trim()))) {
+          return (
+            <ul key={pi} className="list-disc pl-5 space-y-1.5 mb-3">
               {lines.map((l, li) => (
-                <li key={li} className="text-sm leading-relaxed"><InlineMd text={l.replace(/^[-•*]\s/, "")} /></li>
+                <li key={li} className="text-sm leading-relaxed">
+                  <InlineMd text={l.replace(/^[-•*]\s/, "")} />
+                </li>
               ))}
             </ul>
           )
         }
+        // Numbered list
         if (lines.length > 1 && lines.every((l) => /^\d+\.\s/.test(l.trim()))) {
           return (
-            <ol key={pi} className="list-decimal pl-5 space-y-1 mb-3">
+            <ol key={pi} className="list-decimal pl-5 space-y-1.5 mb-3">
               {lines.map((l, li) => (
-                <li key={li} className="text-sm leading-relaxed"><InlineMd text={l.replace(/^\d+\.\s/, "")} /></li>
+                <li key={li} className="text-sm leading-relaxed">
+                  <InlineMd text={l.replace(/^\d+\.\s/, "")} />
+                </li>
               ))}
             </ol>
           )
         }
-        if (para.startsWith("# ")) return <h2 key={pi} className="text-base font-bold mt-4 mb-1">{para.slice(2)}</h2>
-        if (para.startsWith("## ")) return <h3 key={pi} className="text-sm font-semibold mt-3 mb-1">{para.slice(3)}</h3>
-        return <p key={pi} className="text-sm leading-relaxed mb-3"><InlineMd text={para.replace(/\n/g, " ")} /></p>
+        // Mixed block — render line by line
+        if (lines.some((l) => /^[-•*]\s/.test(l.trim()))) {
+          return (
+            <div key={pi} className="mb-3">
+              {lines.map((l, li) =>
+                /^[-•*]\s/.test(l.trim()) ? (
+                  <ul key={li} className="list-disc pl-5">
+                    <li className="text-sm leading-relaxed"><InlineMd text={l.replace(/^[-•*]\s/, "")} /></li>
+                  </ul>
+                ) : (
+                  <p key={li} className="text-sm leading-relaxed"><InlineMd text={l} /></p>
+                )
+              )}
+            </div>
+          )
+        }
+        return (
+          <p key={pi} className="text-sm leading-relaxed mb-3">
+            <InlineMd text={lines.join(" ")} />
+          </p>
+        )
       })}
     </div>
   )
 }
 
 // ─── PDF download for investment memo ────────────────────────────────────────
-function downloadMemoAsPDF(startup: StartupProfile, memo: string) {
-  const win = window.open("", "_blank", "width=900,height=700")
-  if (!win) return
-  const bodyHtml = memo
+function memoToHtml(memo: string): string {
+  return memo
     .split(/\n\n+/)
-    .map((para) => {
-      if (para.startsWith("# ")) return `<h2>${para.slice(2)}</h2>`
-      if (para.startsWith("## ")) return `<h3>${para.slice(3)}</h3>`
-      const html = para
-        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-        .replace(/\n/g, "<br>")
-      return `<p>${html}</p>`
+    .map((block) => {
+      // H1 section headers
+      if (block.startsWith("# ")) {
+        return `<h2>${escHtml(block.slice(2).trim())}</h2>`
+      }
+      // H2 sub-headers (e.g. "Deal at a Glance")
+      if (block.startsWith("## ")) {
+        return `<h3>${escHtml(block.slice(3).trim())}</h3>`
+      }
+      // Bullet lists
+      const lines = block.split("\n").filter(Boolean)
+      if (lines.length > 1 && lines.every((l) => /^[-•*]\s/.test(l.trim()))) {
+        const items = lines.map((l) => {
+          const content = inlineHtml(l.replace(/^[-•*]\s/, ""))
+          return `<li>${content}</li>`
+        })
+        return `<ul>${items.join("")}</ul>`
+      }
+      // Single bullet (common in "Deal at a Glance" subsection)
+      if (lines.length === 1 && /^[-•*]\s/.test(lines[0].trim())) {
+        return `<ul><li>${inlineHtml(lines[0].replace(/^[-•*]\s/, ""))}</li></ul>`
+      }
+      // Numbered lists
+      if (lines.length > 1 && lines.every((l) => /^\d+\.\s/.test(l.trim()))) {
+        const items = lines.map((l) => {
+          const content = inlineHtml(l.replace(/^\d+\.\s/, ""))
+          return `<li>${content}</li>`
+        })
+        return `<ol>${items.join("")}</ol>`
+      }
+      // Mixed block: some lines are bullets — treat each line separately
+      if (lines.some((l) => /^[-•*]\s/.test(l.trim()))) {
+        return lines
+          .map((l) =>
+            /^[-•*]\s/.test(l.trim())
+              ? `<ul><li>${inlineHtml(l.replace(/^[-•*]\s/, ""))}</li></ul>`
+              : `<p>${inlineHtml(l)}</p>`
+          )
+          .join("")
+      }
+      // Normal paragraph (join line breaks within the block)
+      return `<p>${inlineHtml(lines.join(" "))}</p>`
     })
-    .join("")
+    .join("\n")
+}
+
+function escHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function inlineHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+}
+
+function downloadMemoAsPDF(startup: StartupProfile, memo: string) {
+  const win = window.open("", "_blank", "width=960,height=800")
+  if (!win) return
+  const bodyHtml = memoToHtml(memo)
+  const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
   win.document.write(`<!DOCTYPE html>
-<html><head>
+<html lang="en"><head>
+  <meta charset="utf-8">
   <title>${startup.name} — Investment Memo</title>
   <style>
-    body{font-family:Georgia,serif;max-width:750px;margin:48px auto;line-height:1.8;color:#111;font-size:14px}
-    h1{font-size:22px;font-weight:bold;margin:0 0 4px}
-    h2{font-size:16px;font-weight:bold;margin:24px 0 8px;color:#333}
-    h3{font-size:14px;font-weight:bold;margin:20px 0 6px;color:#444}
-    .meta{color:#666;font-size:12px;border-bottom:1px solid #ddd;padding-bottom:16px;margin-bottom:28px}
-    p{margin:0 0 14px}strong{font-weight:bold}em{font-style:italic}
-    @media print{body{margin:0;padding:32px}}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Times New Roman',Georgia,serif;max-width:780px;margin:56px auto;line-height:1.75;color:#111;font-size:13.5px;background:#fff}
+    /* Cover block */
+    .cover{border-bottom:3px solid #E05520;padding-bottom:20px;margin-bottom:32px}
+    .cover-badge{display:inline-block;background:#E05520;color:#fff;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:3px 10px;border-radius:3px;margin-bottom:10px}
+    .cover h1{font-size:26px;font-weight:700;letter-spacing:-.3px;color:#111;line-height:1.2;margin-bottom:6px}
+    .cover .subtitle{font-size:12.5px;color:#555;margin-bottom:14px}
+    .cover .meta-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+    .cover .meta-item{background:#f7f7f7;border:1px solid #e5e5e5;border-radius:4px;padding:8px 10px}
+    .cover .meta-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#888;font-weight:700;margin-bottom:2px}
+    .cover .meta-value{font-size:12px;font-weight:600;color:#111}
+    /* Confidential footer in header area */
+    .confidential{font-size:9.5px;color:#aaa;margin-top:10px}
+    /* Sections */
+    h2{font-size:14.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#E05520;border-bottom:1.5px solid #f0d5cc;padding-bottom:5px;margin:32px 0 12px}
+    h3{font-size:13px;font-weight:700;color:#222;margin:18px 0 8px}
+    p{margin:0 0 12px;text-align:justify}
+    ul,ol{margin:0 0 14px 22px}
+    li{margin-bottom:5px}
+    strong{font-weight:700}
+    em{font-style:italic;color:#555}
+    /* Deal at a glance formatted as clean list */
+    ul li strong{color:#111}
+    @page{size:A4;margin:18mm 22mm}
+    @media print{
+      body{margin:0;font-size:12px}
+      h2{page-break-before:always}
+      h2:first-of-type{page-break-before:avoid}
+    }
   </style>
 </head><body>
-  <h1>${startup.name}</h1>
-  <div class="meta">Investment Memo &nbsp;·&nbsp; ${startup.industry} &nbsp;·&nbsp; ${startup.stage} &nbsp;·&nbsp; ${startup.geography}<br>AI Signal: ${startup.aiScore}/100 &nbsp;·&nbsp; Confidence: ${startup.confidenceLevel}%</div>
+  <div class="cover">
+    <div class="cover-badge">Investment Memo — Confidential</div>
+    <h1>${escHtml(startup.name)}</h1>
+    <div class="subtitle">${escHtml(startup.industry)} &nbsp;·&nbsp; ${escHtml(startup.stage)} &nbsp;·&nbsp; ${escHtml(startup.geography)} &nbsp;·&nbsp; ${escHtml(date)}</div>
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-label">AI Signal</div><div class="meta-value">${startup.aiScore} / 100</div></div>
+      <div class="meta-item"><div class="meta-label">Confidence</div><div class="meta-value">${startup.confidenceLevel}%</div></div>
+      <div class="meta-item"><div class="meta-label">Stage</div><div class="meta-value">${escHtml(startup.stage)}</div></div>
+      <div class="meta-item"><div class="meta-label">Geography</div><div class="meta-value">${escHtml(startup.geography)}</div></div>
+    </div>
+    <div class="confidential">This document contains confidential information prepared by investAble.ai for internal use only. Not for distribution.</div>
+  </div>
   ${bodyHtml}
   <script>window.onload=function(){window.print()}</script>
 </body></html>`)
