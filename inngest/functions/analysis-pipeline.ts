@@ -18,6 +18,19 @@ export const analysisPipeline = inngest.createFunction(
   {
     id: "analysis-pipeline",
     retries: 2,
+    onFailure: async ({ event, error }: { event: { data: { analysisId: string; jobId: string } }; error: Error }) => {
+      const { analysisId, jobId } = event.data
+      await Promise.all([
+        prisma.job.update({
+          where: { id: jobId },
+          data: { status: "FAILED", error: error.message, step: null },
+        }),
+        prisma.analysis.update({
+          where: { id: analysisId },
+          data: { status: "FAILED" },
+        }),
+      ])
+    },
   },
   { event: "analyst-copilot/analysis.started" },
   async ({ event, step }) => {
