@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react"
-import { upload } from "@vercel/blob/client"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -157,15 +156,24 @@ export function UploadPage() {
       let result: { jobId: string; analysisId: string }
 
       if (activeTab === "upload" && selectedFile) {
-        // 1. Direct-to-Blob upload (PDF bytes never touch API route)
-        const blob = await upload(selectedFile.name, selectedFile, {
-          access: "public",
-          handleUploadUrl: "/api/uploads",
-        })
+        // 1. Stream file to our API route → Vercel Blob (avoids CORS)
+        const uploadRes = await fetch(
+          `/api/uploads?filename=${encodeURIComponent(selectedFile.name)}`,
+          {
+            method: "POST",
+            body: selectedFile,
+            headers: { "content-type": selectedFile.type || "application/octet-stream" },
+          }
+        )
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json()
+          throw new Error(err.error || "File upload failed")
+        }
+        const { url } = await uploadRes.json()
         // 2. Submit analysis with blob URL
         result = await submitAnalysis({
           kind: "pdf",
-          pdfUrl: blob.url,
+          pdfUrl: url,
           name: formData.name || selectedFile.name.replace(/\.[^.]+$/, ""),
           industry: formData.industry,
           stage: formData.stage,
